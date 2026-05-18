@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>SuperSplat Walkthrough Viewer</title>
+        <meta charset="utf-8" />
+        <base href="__BASE_HREF__">
+        <link rel="stylesheet" href="./viewer.css">
+        <link rel="shortcut icon" href="#">
+        <meta name="description" content="A first-person walkthrough viewer for Gaussian splat spaces and optional GLB scene geometry." />
+        <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0" />
+    </head>
+
+    <body>
+        <canvas id="viewer-canvas"></canvas>
+
+        <main id="viewer-ui">
+            <section id="loader-panel" class="panel">
+                <h1>Walkthrough Viewer</h1>
+                <p>Load a splat capture and optional GLB guide mesh, then click the view to walk around.</p>
+                <div id="scene-dashboard">
+                    <h2>Quick scene selection</h2>
+                    <div id="scene-list">Loading scenes...</div>
+                </div>
+                <label>
+                    <span>Splat / PLY / SOG</span>
+                    <input id="splat-input" type="file" accept=".splat,.ply,.sog,.json,.ksplat,.spz,.webp">
+                </label>
+                <label>
+                    <span>GLB / GLTF</span>
+                    <input id="glb-input" type="file" accept=".glb,.gltf">
+                </label>
+                <button id="load-files" type="button">Load Files</button>
+            </section>
+
+            <section id="hud">
+                <button id="lock-pointer" type="button">Click To Walk</button>
+                <div id="status">Drop files or use the loader.</div>
+            </section>
+
+            <section id="setup-tools">
+                <button id="save-spawn" type="button">Save Spawn</button>
+                <button id="go-spawn" type="button">Go To Spawn</button>
+                <button id="clear-spawn" type="button">Clear Spawn</button>
+                <button id="toggle-glb" type="button">Hide GLB</button>
+            </section>
+
+            <section id="help">
+                <span>WASD move</span>
+                <span>Mouse look</span>
+                <span>Shift sprint</span>
+                <span>Space jump</span>
+                <span>F fly mode</span>
+                <span>Esc release</span>
+            </section>
+
+            <div id="crosshair"></div>
+        </main>
+
+        <script type="module" src="./viewer.js"></script>
+    </body>
+</html>
