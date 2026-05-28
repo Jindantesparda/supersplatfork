@@ -3,6 +3,6 @@
     "name": "Kotofuri Front Room",
     "description": "Room capture with optional collision GLB.",
     "splat": "kotofuri-front-room.splat",
-    "glb": "kotofuri-front-room.collision.glb"
+    "glb": "kotofuri-front-room.collision.splat.glb"
   }
 ]

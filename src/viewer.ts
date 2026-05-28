@@ -44,6 +44,8 @@ const lockPointerButton = document.getElementById('lock-pointer') as HTMLButtonE
 const saveSpawnButton = document.getElementById('save-spawn') as HTMLButtonElement;
 const goSpawnButton = document.getElementById('go-spawn') as HTMLButtonElement;
 const clearSpawnButton = document.getElementById('clear-spawn') as HTMLButtonElement;
+const registerSceneButton = document.getElementById('register-scene') as HTMLButtonElement;
+const exitViewerButton = document.getElementById('exit-viewer') as HTMLButtonElement;
 const toggleGlbButton = document.getElementById('toggle-glb') as HTMLButtonElement;
 const statusEl = document.getElementById('status') as HTMLElement;
 const uiRoot = document.getElementById('viewer-ui') as HTMLElement;
@@ -60,16 +62,53 @@ interface SceneEntry {
     thumbnail?: string;
 }
 
+const customScenesStorageKey = 'supersplat.walkthrough.customScenes';
+let customSceneManifest: SceneEntry[] = [];
+
 const defaultSceneManifest: SceneEntry[] = [
     {
         name: 'Kotofuri Front Room',
         description: 'Room capture with optional collision GLB.',
         splat: 'kotofuri-front-room.splat',
-        glb: 'kotofuri-front-room.collision.glb'
+        glb: 'kotofuri-front-room.collision.splat.glb'
     }
 ];
 
 const sceneList = document.getElementById('scene-list') as HTMLElement;
+
+const syncSceneControls = () => {
+    const sceneLoaded = !!(activeSplatId || activeGlbId);
+    registerSceneButton.disabled = !sceneLoaded;
+    exitViewerButton.disabled = !sceneLoaded;
+};
+
+const getStoredScenes = (): SceneEntry[] => {
+    try {
+        const raw = window.localStorage.getItem(customScenesStorageKey);
+        if (!raw) {
+            return [];
+        }
+
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) {
+            return [];
+        }
+
+        return parsed.filter((entry): entry is SceneEntry => {
+            return entry && typeof entry === 'object' && typeof entry.name === 'string' && typeof entry.splat === 'string';
+        });
+    } catch {
+        return [];
+    }
+};
+
+const setStoredScenes = (scenes: SceneEntry[]) => {
+    try {
+        window.localStorage.setItem(customScenesStorageKey, JSON.stringify(scenes));
+    } catch {
+        // ignore storage failures
+    }
+};
 
 const getAppBaseUrl = () => {
     const baseElement = document.querySelector('base');
@@ -81,10 +120,69 @@ const getAppBaseUrl = () => {
     return document.baseURI || `${window.location.origin}/`;
 };
 
+const sceneBaseUrlObj = new URL(getAppBaseUrl());
 const sceneBaseUrl = getAppBaseUrl();
 
 const resolveSceneUrl = (path: string) => {
     return new URL(path, sceneBaseUrl).toString();
+};
+
+const resolveSceneAsset = (path: string) => {
+    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(path)) {
+        return path;
+    }
+
+    if (path.startsWith('/')) {
+        return resolveSceneUrl(path.slice(1));
+    }
+
+    if (path.startsWith('./')) {
+        return resolveSceneUrl(path);
+    }
+
+    if (path.startsWith('scenes/')) {
+        return resolveSceneUrl(`./${path}`);
+    }
+
+    return resolveSceneUrl(`./scenes/${path}`);
+};
+
+const isPersistableScenePath = (path: string) => {
+    try {
+        const url = new URL(path, sceneBaseUrl);
+        if (url.origin !== sceneBaseUrlObj.origin) {
+            return true;
+        }
+
+        const relativePath = url.pathname.startsWith(sceneBaseUrlObj.pathname)
+            ? url.pathname.slice(sceneBaseUrlObj.pathname.length)
+            : url.pathname.slice(1);
+
+        return relativePath.startsWith('scenes/');
+    } catch {
+        return false;
+    }
+};
+
+const getPersistableScenePath = (path: string) => {
+    try {
+        const url = new URL(path, sceneBaseUrl);
+        if (url.origin !== sceneBaseUrlObj.origin) {
+            return url.toString();
+        }
+
+        const relativePath = url.pathname.startsWith(sceneBaseUrlObj.pathname)
+            ? url.pathname.slice(sceneBaseUrlObj.pathname.length)
+            : url.pathname.slice(1);
+
+        if (relativePath.startsWith('scenes/')) {
+            return relativePath.slice('scenes/'.length);
+        }
+
+        return relativePath;
+    } catch {
+        return path;
+    }
 };
 
 const isInteractiveTarget = (target: EventTarget | null) => {
@@ -604,6 +702,7 @@ const addSplatData = (filename: string, gsplatData: any) => {
     }
 
     applySavedSpawnIfAny();
+    syncSceneControls();
 };
 
 const loadSplatFromFile = async (file: File) => {
@@ -666,6 +765,7 @@ const loadGlbFromUrl = async (url: string, filename = url) => {
         `Physics ON: ${collisionTriangles.length.toLocaleString()} collision triangles.` :
         `No readable mesh triangles found. Floor fallback ${fallbackGroundY === null ? 'unavailable; fly mode remains on' : 'enabled'}.`;
     syncGlbVisibilityButton();
+    syncSceneControls();
     if (!applySavedSpawnIfAny()) {
         setStatus(`Loaded ${filename}. ${physicsMessage}`);
     }
@@ -683,9 +783,9 @@ const loadGlbFromFile = async (file: File) => {
 const loadSceneFromEntry = async (scene: SceneEntry) => {
     try {
         setStatus(`Loading scene ${scene.name}...`);
-        await loadSplatFromUrl(resolveSceneUrl(`./scenes/${scene.splat}`));
+        await loadSplatFromUrl(resolveSceneAsset(scene.splat));
         if (scene.glb) {
-            await loadGlbFromUrl(resolveSceneUrl(`./scenes/${scene.glb}`), scene.glb);
+            await loadGlbFromUrl(resolveSceneAsset(scene.glb), scene.glb);
         }
     } catch (error) {
         console.error(error);
@@ -731,19 +831,45 @@ const renderSceneList = (scenes: SceneEntry[]) => {
         info.textContent = `Splat: ${scene.splat}${scene.glb ? ` · GLB: ${scene.glb}` : ''}`;
         entry.appendChild(info);
 
+        const buttonsContainer = document.createElement('div');
+        buttonsContainer.style.cssText = 'display: flex; gap: 8px;';
+
         const button = document.createElement('button');
         button.type = 'button';
         button.textContent = 'Explore';
+        button.style.flex = '1';
         button.addEventListener('click', () => {
             void loadSceneFromEntry(scene);
         });
-        entry.appendChild(button);
+        buttonsContainer.appendChild(button);
 
+        const isCustomScene = customSceneManifest.some(
+            (s) => s.name === scene.name && s.splat === scene.splat
+        );
+
+        if (isCustomScene) {
+            const deleteButton = document.createElement('button');
+            deleteButton.type = 'button';
+            deleteButton.textContent = '×';
+            deleteButton.title = 'Delete scene';
+            deleteButton.style.cssText = 'min-width: 38px; flex: 0 0 auto;';
+            deleteButton.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const confirmDelete = confirm(`Delete scene "${scene.name}"?`);
+                if (confirmDelete) {
+                    deleteCustomScene(scene);
+                }
+            });
+            buttonsContainer.appendChild(deleteButton);
+        }
+
+        entry.appendChild(buttonsContainer);
         sceneList.appendChild(entry);
     }
 };
 
 const loadSceneList = async () => {
+    customSceneManifest = getStoredScenes();
     try {
         const response = await fetch(resolveSceneUrl('./scenes/manifest.json'));
         if (!response.ok) {
@@ -755,11 +881,11 @@ const loadSceneList = async () => {
             throw new Error('Invalid scene manifest format');
         }
 
-        renderSceneList(scenes);
+        renderSceneList([...customSceneManifest, ...scenes]);
     } catch (error) {
         console.error(error);
         sceneList.textContent = 'Loading default scenes...';
-        renderSceneList(defaultSceneManifest);
+        renderSceneList([...customSceneManifest, ...defaultSceneManifest]);
         const detail = error instanceof Error ? error.message : String(error);
         setStatus(`Scene dashboard fallback: ${detail}`);
     }
@@ -785,6 +911,8 @@ const loadSelectedFiles = async () => {
             await loadGlbFromFile(glbFile);
             loaderPanel.classList.add('is-hidden');
         }
+
+        syncSceneControls();
     } catch (error) {
         console.error(error);
         setStatus(`Load failed: ${(error instanceof Error ? error.message : String(error))}`);
@@ -816,6 +944,77 @@ const tryLoadDroppedFiles = async (files: FileList) => {
 const promptForFiles = () => {
     setStatus('Choose a splat file first, then optionally add a GLB.');
     splatInput.click();
+};
+
+const saveCurrentSpawnOnExit = () => {
+    if (activeSplatId || activeGlbId) {
+        saveSpawnPose();
+    }
+};
+
+const registerCurrentScene = () => {
+    if (!activeSplatId && !activeGlbId) {
+        setStatus('Load a scene first to register it.');
+        return;
+    }
+
+    const sceneName = prompt('Enter a name for this scene:', activeSplatId || activeGlbId || 'New scene');
+    if (!sceneName) {
+        return;
+    }
+
+    const splatPath = activeSplatId && isPersistableScenePath(activeSplatId) ? getPersistableScenePath(activeSplatId) : undefined;
+    const glbPath = activeGlbId && isPersistableScenePath(activeGlbId) ? getPersistableScenePath(activeGlbId) : undefined;
+
+    if (!splatPath) {
+        setStatus('This scene cannot be registered because the splat source is not persistable. Use a scene from the local scenes catalog.');
+        return;
+    }
+
+    const entry: SceneEntry = {
+        name: sceneName,
+        description: 'Registered scene',
+        splat: splatPath,
+        glb: glbPath
+    };
+
+    customSceneManifest = [entry, ...customSceneManifest.filter((scene) => scene.name !== entry.name || scene.splat !== entry.splat)];
+    setStoredScenes(customSceneManifest);
+    renderSceneList([...customSceneManifest, ...defaultSceneManifest]);
+    setStatus(`Scene registered as “${sceneName}”. Use the dashboard to open it later.`);
+};
+
+const exitViewer = () => {
+    saveCurrentSpawnOnExit();
+    if (document.pointerLockElement === canvas && document.exitPointerLock) {
+        document.exitPointerLock();
+    }
+
+    loaderPanel.classList.remove('is-hidden');
+    setStatus('Exited scene view. Pick a scene from the dashboard or load files.');
+};
+
+const deleteCustomScene = (scene: SceneEntry) => {
+    customSceneManifest = customSceneManifest.filter((s) => !(s.name === scene.name && s.splat === scene.splat));
+    setStoredScenes(customSceneManifest);
+    try {
+        const response = fetch(resolveSceneUrl('./scenes/manifest.json'));
+        response.then((res) => {
+            if (res.ok) {
+                return res.json() as Promise<SceneEntry[]>;
+            }
+
+            return defaultSceneManifest;
+        }).then((defaultScenes) => {
+            renderSceneList([...customSceneManifest, ...(Array.isArray(defaultScenes) ? defaultScenes : defaultSceneManifest)]);
+        }).catch(() => {
+            renderSceneList([...customSceneManifest, ...defaultSceneManifest]);
+        });
+    } catch {
+        renderSceneList([...customSceneManifest, ...defaultSceneManifest]);
+    }
+
+    setStatus(`Scene "${scene.name}" deleted.`);
 };
 
 const requestPointerLock = (event?: Event) => {
@@ -864,6 +1063,8 @@ lockPointerButton.addEventListener('click', (event) => {
 saveSpawnButton.addEventListener('click', saveSpawnPose);
 goSpawnButton.addEventListener('click', goToSpawnPose);
 clearSpawnButton.addEventListener('click', clearSpawnPose);
+registerSceneButton.addEventListener('click', registerCurrentScene);
+exitViewerButton.addEventListener('click', exitViewer);
 toggleGlbButton.addEventListener('click', () => {
     setGlbVisible(!glbVisible);
 });
@@ -942,6 +1143,10 @@ document.addEventListener('drop', (event) => {
 window.addEventListener('resize', () => {
     app.resizeCanvas();
     app.updateCanvasSize();
+});
+
+window.addEventListener('beforeunload', () => {
+    saveCurrentSpawnOnExit();
 });
 
 app.on('update', (dt: number) => {
@@ -1032,6 +1237,7 @@ const splatUrl = params.get('splat') ?? params.get('ply') ?? params.get('load');
 const glbUrl = params.get('glb') ?? params.get('model');
 
 syncGlbVisibilityButton();
+syncSceneControls();
 app.start();
 
 try {

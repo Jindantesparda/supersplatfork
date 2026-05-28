@@ -63,7 +63,7 @@ const application = {
                 },
                 { src: 'src/viewer.css' },
                 { src: 'src/manifest.json' },
-                { src: 'scenes', dest: 'scenes' },
+                { src: 'scenes', dest: '.' },
                 { src: 'static/images', dest: 'static' },
                 { src: 'static/icons', dest: 'static' },
                 { src: 'static/lib', dest: 'static' },
